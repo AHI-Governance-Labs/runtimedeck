@@ -1,0 +1,3 @@
+{"name":"Arithmetic","prompt":"Calcula 12 + 7. Responde únicamente con el número, sin explicación.","check":"exact","expected":"19"}
+{"name":"Spanish instruction","prompt":"Responde únicamente con la palabra hola, sin puntuación ni explicación.","check":"exact","expected":"hola"}
+{"name":"Structured JSON","prompt":"Devuelve únicamente este objeto JSON sin bloques de código: {\"ok\":true}","check":"json","expected":{"ok":true}}

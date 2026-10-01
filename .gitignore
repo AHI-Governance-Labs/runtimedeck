@@ -1,0 +1,43 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test, lint and type-check caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# RuntimeDeck output when the repository is selected as the workspace
+/benchmarks/
+
+# Temporary and operating-system files
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# JetBrains IDE
+.idea/

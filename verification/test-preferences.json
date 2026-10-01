@@ -1,0 +1,23 @@
+{
+  "root": "G:\\Runtimes",
+  "ctx": 1024,
+  "ngl": 99,
+  "threads": 8,
+  "batch": 256,
+  "ubatch": 256,
+  "max_tokens": 256,
+  "temp": 0.0,
+  "top_p": 0.95,
+  "top_k": 40,
+  "seed": 42,
+  "flash": true,
+  "mmap": true,
+  "prompt": "Responde brevemente: ¿cuánto es 12 + 7?",
+  "server_port": 18088,
+  "server_host": "127.0.0.1",
+  "bench_prompt": 64,
+  "bench_gen": 16,
+  "bench_reps": 2,
+  "thermal_limit": 85,
+  "job_timeout": 600
+}
