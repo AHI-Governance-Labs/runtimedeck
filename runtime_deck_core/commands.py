@@ -49,6 +49,8 @@ def build_command(kind, model, runtime, values, dataset=""):
                      "-fa", "on" if values["flash"] else "off"))
     if kind == "inference":
         argv.extend(("--single-turn", "--simple-io", "--perf"))
+    if kind == "server":
+        argv.extend(("--alias", model.name, "--parallel", str(validate_value("server_parallel", values.get("server_parallel", 1)))))
     if kind == "quality":
         if not dataset or not Path(dataset).is_file():
             raise ValueError("Select an existing text corpus for perplexity.")
@@ -58,6 +60,6 @@ def build_command(kind, model, runtime, values, dataset=""):
         argv.extend(("-f", dataset, "--chunks", str(chunks)))
     if kind != "benchmark" and validate_value("flash", values["flash"]):
         argv.extend(("--flash-attn", "on"))
-    if kind == "inference" and not validate_value("mmap", values["mmap"]):
+    if kind in {"inference", "server"} and not validate_value("mmap", values["mmap"]):
         argv.append("--no-mmap")
     return argv

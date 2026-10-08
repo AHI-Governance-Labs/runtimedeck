@@ -53,4 +53,4 @@ class RuntimeItem:
             caps.append("ppl")
         if self.quantize:
             caps.append("quant")
-        return ", ".join(caps) or "unknown"
+        return ", ".join(caps) or "sin ejecutable compatible"

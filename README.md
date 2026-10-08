@@ -2,10 +2,11 @@
 
 **Carga. Mide. Compara. Ajusta. Verifica.**
 
-RuntimeDeck es un banco de trabajo de escritorio para ejecutar y evaluar modelos
-locales con tus propios binarios de [llama.cpp](https://github.com/ggml-org/llama.cpp).
-Permite descubrir modelos y runtimes, lanzar inferencias y benchmarks, conversar
-con un servidor local y conservar evidencia reproducible de los experimentos.
+RuntimeDeck descubre tus modelos y runtimes, administra un servidor local y
+te da una URL compatible con OpenAI para conectarlo a otras aplicaciones.
+La generación se configura en cada app cliente. El adaptador incluido arranca
+tus propios binarios de [llama.cpp](https://github.com/ggml-org/llama.cpp).
+También conserva las herramientas de inferencia y evaluación del banco de trabajo.
 
 > RuntimeDeck coordina tus herramientas; no incluye modelos ni runtimes.
 
@@ -23,14 +24,17 @@ Al instalar Python en Windows, asegúrate de incluir Tcl/Tk para disponer de
 ## Inicio rápido
 
 1. Organiza tus archivos bajo una carpeta de espacio de trabajo. Por defecto,
-   RuntimeDeck busca en `G:\Runtimes`:
+   RuntimeDeck usa la **carpeta superior a la aplicación**, sin fijar una unidad:
 
    ```text
-   G:\Runtimes\
-   ├── models\
+   workspace\
+   ├── RuntimeDeck\
+   │   ├── runtime_deck.py
+   │   └── run.cmd
+   ├── Modelos\
    │   └── familia\
    │       └── modelo.gguf
-   └── runtimes\
+   └── Runtimes\
        └── cuda\
            ├── llama-cli.exe
            ├── llama-bench.exe
@@ -39,9 +43,11 @@ Al instalar Python en Windows, asegúrate de incluir Tcl/Tk para disponer de
            └── ... DLL del runtime ...
    ```
 
-   Puedes cambiar la carpeta desde **Workspace**. Los modelos se buscan bajo
-   `models\` y los ejecutables bajo `runtimes\`, incluyendo sus subdirectorios.
-   Cada carpeta que contiene ejecutables reconocidos se registra como un runtime.
+   Puedes cambiar la carpeta desde **Workspace**. Se aceptan `models` o `Modelos`
+   y `runtimes` o `Runtimes`; se incluyen subdirectorios como `build\bin\Debug`.
+   Si eliges una de esas carpetas, se detecta su padre compartido. Las preferencias
+   de una ubicación que ya no existe vuelven al workspace de esta instalación.
+   El escaneo omite `.git`, entornos Python y `node_modules`.
 
 2. Inicia la aplicación con doble clic en `run.cmd` o desde PowerShell:
 
@@ -49,8 +55,14 @@ Al instalar Python en Windows, asegúrate de incluir Tcl/Tk para disponer de
    py .\runtime_deck.py
    ```
 
-3. Selecciona un modelo y un runtime del inventario, configura los parámetros
-   y ejecuta la operación desde su pestaña.
+3. En **Servidor**, selecciona un modelo y un runtime, revisa los recursos de
+   arranque y pulsa **INICIAR SERVIDOR**. Cuando aparezca **API lista**, copia
+   la **URL base** y el **ID del modelo** a tu otra app. Ambos se verifican contra
+   `/v1/models`. **Copiar conexión** copia los dos campos en JSON.
+
+   La selección de modelo y runtime se conserva entre sesiones. Si cambias la
+   selección o el puerto mientras el servidor sigue activo, la conexión publicada
+   conserva los datos del proceso que ya está ejecutándose.
 
 RuntimeDeck detecta modelos `.gguf`, `.safetensors`, `.bin`, `.onnx`, `.pt` y
 `.pth`. El adaptador actual de llama.cpp solo ejecuta modelos GGUF; los demás
@@ -61,6 +73,11 @@ RuntimeDeck reconoce `llama-cli.exe`, `llama-bench.exe`, `llama-server.exe`,
 `llama-perplexity.exe` y `llama-quantize.exe`. Inferencia, benchmarks, servidor
 y perplexity requieren el ejecutable correspondiente; `llama-quantize.exe` se
 registra en el inventario, pero la interfaz aún no ofrece un flujo de cuantización.
+
+Las carpetas de otros motores o repositorios sin binarios aparecen como
+**sin ejecutable compatible**. Detectar una carpeta no instala ni implementa
+su adaptador. Un archivo GGUF también debe usar una arquitectura y cuantización
+que admita el binario seleccionado; si el runtime lo rechaza, consulta su salida.
 
 ## Funciones
 
@@ -92,11 +109,39 @@ al iniciarse. Cambiar la selección después no altera los resultados de esa tar
 Los candidatos fallidos, cancelados o con discrepancias de parámetros no se
 consideran para elegir el mejor resultado.
 
-### Servidor y chat local
+### Servidor para otras aplicaciones
 
-**Server** inicia `llama-server` con el modelo seleccionado. El host y puerto
+**Servidor** es la pestaña inicial e inicia `llama-server` con el modelo seleccionado. El host y puerto
 predeterminados son `127.0.0.1:8080`. El proceso queda administrado por
 RuntimeDeck y se puede detener desde la aplicación.
+
+La URL base tiene la forma `http://127.0.0.1:<puerto>/v1`; úsala tal como se
+muestra, sin añadir `/chat/completions` al campo URL base de tu cliente.
+El ID se obtiene del servidor, con el nombre del archivo como alias de este
+adaptador. Para otras APIs compatibles que ya estén escuchando en el host y
+puerto elegidos, **Verificar API** consulta sus modelos publicados.
+Si tu cliente requiere una clave aunque el servidor local no tenga autenticación,
+puedes usar un texto como `local`.
+
+| Se ajusta en la app cliente, por petición | Se ajusta en RuntimeDeck, al arrancar |
+| --- | --- |
+| Mensajes, instrucciones de sistema y conversación | Modelo cargado y ejecutable |
+| Temperatura, top-p, top-k y semilla | Contexto máximo, capas GPU y hilos |
+| Tokens de salida, streaming, stop y penalizaciones | Batch, µBatch, Flash Attention y mmap |
+| Herramientas o formato de respuesta si la API/modelo los admite | Host, puerto y peticiones simultáneas |
+
+RuntimeDeck no interpone un proxy ni sobrescribe las peticiones de otra app.
+Los ajustes de generación de **Inference** o **Chat** solo afectan a esas
+herramientas locales y no se pasan al comando del servidor. Si un cliente omite
+un parámetro, el runtime usa su valor predeterminado. El contexto máximo depende
+de los recursos asignados y las peticiones simultáneas; no puede ampliarse con
+una petición. Mantén RuntimeDeck abierto mientras uses su servidor.
+
+El contrato HTTP de la conexión es compatible con OpenAI; el lanzamiento de
+modelos en esta versión sigue usando el adaptador llama.cpp. Las opciones extra
+como top-k dependen de la API y de que tu cliente permita enviarlas.
+
+### Chat local opcional
 
 En **Chat** puedes conversar mediante el servidor local, configurar una
 instrucción de sistema, activar el modo de razonamiento si el modelo lo admite,
@@ -171,12 +216,25 @@ Por ejemplo, para probar inferencia, ajuste, suites, perplexity, chat y respuest
 py tools\verify_local.py --inference --tune --suites --quality --chat --answers
 ```
 
-Puedes fijar un modelo concreto con `--model "G:\Runtimes\models\ruta\modelo.gguf"`.
+Puedes fijar un modelo concreto con `--model "F:\Modelos\ruta\modelo.gguf"`.
 Para consultar las opciones disponibles:
 
 ```powershell
 py tools\verify_local.py --help
 ```
+
+Para verificar específicamente el servidor y su uso desde clientes HTTP:
+
+```powershell
+py tools\verify_server.py --model "F:\Modelos\ruta\modelo-compatible.gguf"
+```
+
+Esta comprobación usa un puerto libre, contexto de 1024 tokens y preferencias
+temporales. Verifica el inventario visible, `/v1/models`, dos peticiones de chat
+con distintos límites y temperaturas, streaming, parámetros efectivos reportados
+por llama.cpp, conservación de los valores globales y cierre del proceso.
+Guarda el informe, la salida y una captura en `verification\server\`, sin cambiar
+tus preferencias. El modelo debe ser compatible con el runtime instalado.
 
 ## Estructura del proyecto
 

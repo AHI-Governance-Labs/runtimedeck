@@ -16,8 +16,8 @@ def model_label(model, root):
     scale = parameters.group(1).upper() if parameters else "—"
     title = re.sub(r"[-_]", " ", stem).strip()
     try:
-        parts = Path(model.path).relative_to(Path(root) / "models").parts
-        folder = parts[0] if len(parts) > 1 else ""
+        parts = Path(model.path).relative_to(Path(root)).parts
+        folder = parts[1] if len(parts) > 2 and parts[0].casefold() in {"models", "modelos"} else ""
     except ValueError:
         folder = ""
     family = folder.title() if folder and not re.fullmatch(r"\d+(?:\.\d+)?B", folder, re.I) else title.split()[0]

@@ -7,15 +7,18 @@ import tempfile
 from pathlib import Path
 
 from .config import DEFAULT_ROOT, SETTINGS_PATH
+from .discovery import normalize_workspace
 
 DEFAULTS = {
     "root": str(DEFAULT_ROOT), "ctx": 8192, "ngl": 99,
+    "model_path": "", "runtime_directory": "",
     "threads": max(1, (os.cpu_count() or 8) // 2),
     "batch": 512, "ubatch": 256, "max_tokens": 256,
     "temp": 0.7, "top_p": 0.95, "top_k": 40, "seed": -1,
     "flash": True, "mmap": True,
     "prompt": "Explica brevemente qué runtime estás usando.",
     "server_port": 8080, "server_host": "127.0.0.1",
+    "server_parallel": 1,
     "bench_prompt": 512, "bench_gen": 128, "bench_reps": 3,
     "thermal_limit": 85, "job_timeout": 600,
 }
@@ -24,6 +27,7 @@ LIMITS = {
     "batch": (1, 8192), "ubatch": (1, 8192), "max_tokens": (1, 100000),
     "temp": (0, 5), "top_p": (0, 1), "top_k": (0, 10000),
     "seed": (-1, 2147483647), "server_port": (1, 65535),
+    "server_parallel": (1, 64),
     "bench_prompt": (1, 100000), "bench_gen": (1, 100000), "bench_reps": (1, 100),
     "thermal_limit": (0, 110), "job_timeout": (5, 86400),
 }
@@ -75,6 +79,8 @@ class SettingsStore:
                     result[key] = validate_value(key, data[key])
                 except ValueError:
                     pass
+        root = Path(result["root"]).expanduser()
+        result["root"] = str(normalize_workspace(root if root.is_dir() else DEFAULT_ROOT))
         return result
 
     def save(self, data):

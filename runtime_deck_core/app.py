@@ -16,7 +16,7 @@ from typing import Optional
 from .benchmarks import BenchmarkSession
 from .commands import build_command, format_command
 from .config import APP_NAME, DEFAULT_ROOT, SETTINGS_PATH
-from .discovery import discover_workspace
+from .discovery import discover_workspace, normalize_workspace
 from .models import ModelItem, RuntimeItem, human_size
 from .processes import ProcessRunner
 from .settings import DEFAULTS, SettingsStore, validate_value
@@ -31,6 +31,7 @@ from .catalog import model_label
 from .plan_controller import PlanController
 from .settings import validate_settings
 from .inference_output import split_inference_output
+from .server_connection import ServerConnection
 
 
 class RuntimeDeck(RuntimeDeckView):
@@ -67,6 +68,8 @@ class RuntimeDeck(RuntimeDeckView):
         self.model_info_var = tk.StringVar(value="No model selected")
         self.runtime_info_var = tk.StringVar(value="No runtime selected")
         self.model_filter_var = tk.StringVar(self, "")
+        self.model_path_var = tk.StringVar(self, self.settings["model_path"])
+        self.runtime_directory_var = tk.StringVar(self, self.settings["runtime_directory"])
         self._inference_raw = []
         self._active_command_snapshot = None
 
@@ -85,6 +88,7 @@ class RuntimeDeck(RuntimeDeckView):
         self.prompt_var = tk.StringVar(value=self.settings.get("prompt", "Explica brevemente qué runtime estás usando."))
         self.server_port_var = tk.IntVar(value=int(self.settings.get("server_port", 8080)))
         self.server_host_var = tk.StringVar(value=self.settings.get("server_host", "127.0.0.1"))
+        self.server_parallel_var = tk.IntVar(value=self.settings.get("server_parallel", 1))
         self.bench_prompt_var = tk.IntVar(value=int(self.settings.get("bench_prompt", 512)))
         self.bench_gen_var = tk.IntVar(value=int(self.settings.get("bench_gen", 128)))
         self.bench_reps_var = tk.IntVar(value=int(self.settings.get("bench_reps", 3)))
@@ -100,6 +104,7 @@ class RuntimeDeck(RuntimeDeckView):
         self.server_values = None
         self.server_model = None
         self.server_runtime = None
+        self.server_connection = ServerConnection(self)
         self.monitor = GpuMonitor(lambda sample: self.msgq.put(("telemetry", sample)))
         self._build_ui()
         self.model_filter_var.trace_add("write", lambda *args: self._render_catalog())
@@ -195,7 +200,12 @@ class RuntimeDeck(RuntimeDeckView):
         if self.plan.running:
             self.status_var.set("El inventario permanece capturado mientras se ejecuta el plan")
             return
-        workspace = Path(self.root_var.get()).expanduser()
+        try:
+            workspace = normalize_workspace(self.root_var.get())
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        self.root_var.set(str(workspace))
         self._scan_generation += 1
         generation = self._scan_generation
         self.status_var.set("Scanning workspace...")
@@ -219,8 +229,8 @@ class RuntimeDeck(RuntimeDeckView):
             self.status_var.set("Workspace scan failed")
             messagebox.showerror(APP_NAME, error)
             return
-        model_path = self.selected_model.path if self.selected_model else None
-        runtime_path = self.selected_runtime.directory if self.selected_runtime else None
+        model_path = self.selected_model.path if self.selected_model else self.model_path_var.get()
+        runtime_path = self.selected_runtime.directory if self.selected_runtime else self.runtime_directory_var.get()
         self.models, self.runtimes, warnings = result
         self.selected_model = None
         self.selected_runtime = None
@@ -261,6 +271,7 @@ class RuntimeDeck(RuntimeDeckView):
             return
         self.selected_model = self.models[idx]
         m = self.selected_model
+        self.model_path_var.set(m.path)
         self.model_info_var.set(f"{m.path}\n{human_size(m.size)}")
 
 
@@ -274,6 +285,7 @@ class RuntimeDeck(RuntimeDeckView):
             return
         self.selected_runtime = self.runtimes[idx]
         r = self.selected_runtime
+        self.runtime_directory_var.set(r.directory)
         self.runtime_info_var.set(f"{r.directory}\n{r.capabilities}")
 
 
@@ -348,10 +360,14 @@ class RuntimeDeck(RuntimeDeckView):
             button.state(["disabled"])
         try:
             self.runner.start(argv, cwd=self.selected_runtime.directory)
+            if kind == "server":
+                self.server_connection.refresh(wait_for_start=True)
             if kind != "server":
                 self._job_timer = self.after(self.job_timeout_var.get() * 1000, self._job_timeout)
         except Exception:
             self.active_kind = None
+            if kind == "server":
+                self.server_connection.stopped()
             self.benchmark = None
             for button in self.action_buttons:
                 button.state(["!disabled"])
@@ -414,6 +430,8 @@ class RuntimeDeck(RuntimeDeckView):
         self.evaluation.stop()
         self.lab.stop()
         if self.runner.running:
+            if self.active_kind == "server" and not self._job_stop_reason:
+                self._job_stop_reason = "Servidor detenido"
             self.status_var.set("Stopping...")
             self.runner.stop()
 
@@ -424,6 +442,9 @@ class RuntimeDeck(RuntimeDeckView):
         try:
             while time.monotonic() < deadline:
                 kind, payload = self.msgq.get_nowait()
+                if kind == "server_connection":
+                    self.server_connection.event(payload)
+                    continue
                 if kind.startswith("evaluation_"):
                     self.evaluation.event(kind, payload)
                     continue
@@ -465,6 +486,7 @@ class RuntimeDeck(RuntimeDeckView):
                         self._inference_raw.append(text)
                         self._render_inference()
                 elif kind == "done":
+                    was_server = self.active_kind == "server"
                     code = int(payload)
                     self.command_panel.finish(self._active_command_snapshot, code)
                     if self._job_timer is not None:
@@ -476,6 +498,8 @@ class RuntimeDeck(RuntimeDeckView):
                         self._save_bench_result(code)
                     self.benchmark = None
                     self.active_kind = None
+                    if was_server:
+                        self.server_connection.stopped(0 if self._job_stop_reason else code)
                     for button in self.action_buttons:
                         button.state(["!disabled"])
                 elif kind == "gpu":
@@ -545,6 +569,7 @@ class RuntimeDeck(RuntimeDeckView):
             messagebox.showerror(APP_NAME, f"Could not save settings: {exc}")
             return
         self._closing = True
+        self.server_connection.close()
         self.plan.stop()
         self.runner.stop()
         self.lab.stop()

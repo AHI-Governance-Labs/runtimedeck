@@ -10,6 +10,7 @@ from .prompt_view import PromptEditor
 from .command_view import CommandPanel
 from .plan_view import PlanPanel
 from .widgets import ScrolledForm
+from .server_view import ServerPanel
 
 
 class RuntimeDeckView(tk.Tk):
@@ -33,7 +34,7 @@ class RuntimeDeckView(tk.Tk):
 
         self.workbench_pane = ttk.Panedwindow(self, orient="vertical")
         self.workbench_pane.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
-        pane = ttk.Panedwindow(self.workbench_pane, orient="horizontal")
+        pane = ttk.Panedwindow(self.workbench_pane, orient="horizontal", height=480)
         self.workbench_pane.add(pane, weight=4)
 
         library = ttk.Panedwindow(pane, orient="vertical")
@@ -78,10 +79,10 @@ class RuntimeDeckView(tk.Tk):
         self.server_tab = ttk.Frame(nb, padding=8)
         self.system_tab = ttk.Frame(nb, padding=8)
         self.plan_panel = PlanPanel(nb, self)
+        nb.add(self.server_tab, text="Servidor")
         nb.add(self.plan_panel, text="Plan y objetivo")
         nb.add(self.infer_tab, text="Inference")
         nb.add(self.bench_tab, text="Benchmark")
-        nb.add(self.server_tab, text="Server")
         nb.add(self.system_tab, text="System")
         self.chat_panel = ChatPanel(nb, self)
         nb.add(self.chat_panel, text="Chat")
@@ -94,9 +95,11 @@ class RuntimeDeckView(tk.Tk):
         self._build_bench_tab()
         self._build_server_tab()
         self._build_system_tab()
+        nb.select(self.server_tab)
 
         # Bottom log
-        bottom = ttk.Frame(self.workbench_pane, padding=(0,0,0,4))
+        bottom = ttk.Frame(self.workbench_pane, padding=(0,0,0,4), height=190)
+        bottom.pack_propagate(False)
         self.workbench_pane.add(bottom, weight=1)
         header = ttk.Frame(bottom)
         header.pack(fill="x")
@@ -119,9 +122,10 @@ class RuntimeDeckView(tk.Tk):
         ttk.Button(status, text="Inspeccionar comando", command=lambda: self.bottom_notebook.select(self.command_panel)).pack(side="right")
         ttk.Entry(status, textvariable=self.command_var, state="readonly").pack(side="right", fill="x", expand=True, padx=12)
         def arrange():
-            self.workbench_pane.sashpos(0, max(330, self.workbench_pane.winfo_height() - 190))
             pane.sashpos(0, 350)
             library.sashpos(0, int(library.winfo_height() * 0.70))
+            # Let the nested panes settle before reserving space for the console.
+            self.after_idle(lambda: self.workbench_pane.sashpos(0, max(330, self.workbench_pane.winfo_height() - 190)))
         self.after(80, arrange)
 
 
@@ -196,24 +200,7 @@ class RuntimeDeckView(tk.Tk):
 
 
     def _build_server_tab(self):
-        f = self.server_tab
-        f.columnconfigure(1, weight=1)
-        ttk.Label(f, text="Host").grid(row=0, column=0, sticky="w")
-        ttk.Entry(f, textvariable=self.server_host_var).grid(row=0, column=1, sticky="ew")
-        self._spin(f, "Port", self.server_port_var, 1, 1, 65535)
-        self._spin(f, "Context", self.ctx_var, 2, 256, 1048576)
-        self._spin(f, "GPU layers", self.ngl_var, 3, 0, 999)
-
-        ttk.Label(
-            f,
-            text="Starts llama-server with the selected model. RuntimeDeck keeps the process attached so Stop can terminate it.",
-            wraplength=500,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=10)
-
-        btns = ttk.Frame(f)
-        btns.grid(row=5, column=0, columnspan=2, sticky="w")
-        ttk.Button(btns, text="Preview", command=self.preview_server).pack(side="left")
-        self._action_button(btns, "START SERVER", self.run_server).pack(side="left", padx=6)
+        self.server_panel = ServerPanel(self.server_tab, self)
 
 
     def _build_system_tab(self):
