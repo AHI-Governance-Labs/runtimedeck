@@ -19,6 +19,9 @@ DEFAULTS = {
     "prompt": "Explica brevemente qué runtime estás usando.",
     "server_port": 8080, "server_host": "127.0.0.1",
     "server_parallel": 1,
+    "kv_cache_enabled": False, "kv_ott_core": "",
+    "kv_cache_directory": str(SETTINGS_PATH.parent / "kv-sessions"),
+    "kv_cache_budget_mib": 4096, "kv_cache_max_mib": 512,
     "bench_prompt": 512, "bench_gen": 128, "bench_reps": 3,
     "thermal_limit": 85, "job_timeout": 600,
 }
@@ -28,6 +31,7 @@ LIMITS = {
     "temp": (0, 5), "top_p": (0, 1), "top_k": (0, 10000),
     "seed": (-1, 2147483647), "server_port": (1, 65535),
     "server_parallel": (1, 64),
+    "kv_cache_budget_mib": (64, 1048576), "kv_cache_max_mib": (1, 4096),
     "bench_prompt": (1, 100000), "bench_gen": (1, 100000), "bench_reps": (1, 100),
     "thermal_limit": (0, 110), "job_timeout": (5, 86400),
 }
@@ -52,7 +56,9 @@ def validate_value(key, value):
         value = int(number) if isinstance(default, int) else number
     elif not isinstance(value, str):
         raise ValueError(f"{key}: expected text.")
-    if key in {"root", "server_host"} and not value.strip():
+    if key in {"kv_ott_core", "kv_cache_directory"}:
+        value = value.strip()
+    if key in {"root", "server_host", "kv_cache_directory"} and not value.strip():
         raise ValueError(f"{key}: cannot be empty.")
     return value
 

@@ -15,6 +15,8 @@ También conserva las herramientas de inferencia y evaluación del banco de trab
 - Windows recomendado (el lanzador incluido es `run.cmd` y la limpieza completa
   de procesos utiliza Windows Job Objects).
 - Python con `tkinter` disponible. No se requieren paquetes externos de Python.
+- La función opcional **KV de sesiones** requiere `ott-core` y su dependencia
+  `numpy`; utiliza el adaptador de slots de llama.cpp.
 - Una instalación de llama.cpp con los ejecutables que quieras usar.
 - Modelos GGUF para las operaciones del adaptador llama.cpp.
 
@@ -141,6 +143,24 @@ El contrato HTTP de la conexión es compatible con OpenAI; el lanzamiento de
 modelos en esta versión sigue usando el adaptador llama.cpp. Las opciones extra
 como top-k dependen de la API y de que tu cliente permita enviarlas.
 
+### KV de sesiones con OTT
+
+**KV de sesiones** conserva la caché de un slot inactivo en un volumen OTT con
+dos réplicas. Permite restaurarla después de reiniciar el servidor y reutilizar
+el prefijo desde la aplicación cliente. Comprueba la identidad del modelo, el
+binario y las bibliotecas del runtime, y la configuración de contexto.
+
+Indica la carpeta de `ott-core`, el destino de las sesiones y sus límites;
+activa **Habilitar sesiones KV** antes de iniciar el servidor. Elige el slot,
+pulsa **Guardar slot** y selecciona su copia para **Restaurar copia**. Conserva
+los mensajes en tu cliente y pausa las peticiones a ese slot durante la operación.
+La restauración sustituye la KV actual del slot.
+
+Los límites predeterminados son 512 MiB por sesión y 4096 MiB de almacenamiento.
+El tamaño depende del modelo y del formato nativo del runtime. Esta etapa conserva
+KV de sesiones; ampliar el contexto activo necesita integración con la atención
+dentro del runtime. Consulta [configuración y verificación](docs/KV_OTT.md).
+
 ### Chat local opcional
 
 En **Chat** puedes conversar mediante el servidor local, configurar una
@@ -235,6 +255,16 @@ con distintos límites y temperaturas, streaming, parámetros efectivos reportad
 por llama.cpp, conservación de los valores globales y cierre del proceso.
 Guarda el informe, la salida y una captura en `verification\server\`, sin cambiar
 tus preferencias. El modelo debe ser compatible con el runtime instalado.
+
+Para verificar el recorrido KV completo con un modelo compatible:
+
+```powershell
+py tools\verify_kv_ott.py --ott-core "C:\ruta\ott-core" --model "F:\Modelos\ruta\modelo-compatible.gguf"
+```
+
+Guarda una KV real, prueba recuperación y rechazo de corrupción, reinicia el
+servidor, restaura la sesión y comprueba reutilización de prefijo y continuación.
+Usa preferencias temporales y deja evidencia por ejecución en `verification\kv-ott\`.
 
 ## Estructura del proyecto
 

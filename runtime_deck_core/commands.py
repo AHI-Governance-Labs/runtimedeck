@@ -51,6 +51,12 @@ def build_command(kind, model, runtime, values, dataset=""):
         argv.extend(("--single-turn", "--simple-io", "--perf"))
     if kind == "server":
         argv.extend(("--alias", model.name, "--parallel", str(validate_value("server_parallel", values.get("server_parallel", 1)))))
+        if validate_value("kv_cache_enabled", values.get("kv_cache_enabled", False)):
+            directory = validate_value("kv_cache_directory", values.get("kv_cache_directory", "")).strip()
+            if not directory:
+                raise ValueError("Selecciona una carpeta para las sesiones KV.")
+            slot_path = Path(directory).expanduser().resolve() / "slots"
+            argv.extend(("--slots", "--slot-save-path", str(slot_path)))
     if kind == "quality":
         if not dataset or not Path(dataset).is_file():
             raise ValueError("Select an existing text corpus for perplexity.")

@@ -11,6 +11,7 @@ from .command_view import CommandPanel
 from .plan_view import PlanPanel
 from .widgets import ScrolledForm
 from .server_view import ServerPanel
+from .kv_view import KVPanel
 
 
 class RuntimeDeckView(tk.Tk):
@@ -80,6 +81,8 @@ class RuntimeDeckView(tk.Tk):
         self.system_tab = ttk.Frame(nb, padding=8)
         self.plan_panel = PlanPanel(nb, self)
         nb.add(self.server_tab, text="Servidor")
+        self.kv_panel = KVPanel(nb, self)
+        nb.add(self.kv_panel, text="KV de sesiones")
         nb.add(self.plan_panel, text="Plan y objetivo")
         nb.add(self.infer_tab, text="Inference")
         nb.add(self.bench_tab, text="Benchmark")

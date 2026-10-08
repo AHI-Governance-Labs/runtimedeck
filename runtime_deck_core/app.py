@@ -32,6 +32,7 @@ from .plan_controller import PlanController
 from .settings import validate_settings
 from .inference_output import split_inference_output
 from .server_connection import ServerConnection
+from .kv_controller import KVController
 
 
 class RuntimeDeck(RuntimeDeckView):
@@ -89,6 +90,11 @@ class RuntimeDeck(RuntimeDeckView):
         self.server_port_var = tk.IntVar(value=int(self.settings.get("server_port", 8080)))
         self.server_host_var = tk.StringVar(value=self.settings.get("server_host", "127.0.0.1"))
         self.server_parallel_var = tk.IntVar(value=self.settings.get("server_parallel", 1))
+        self.kv_cache_enabled_var = tk.BooleanVar(value=self.settings["kv_cache_enabled"])
+        self.kv_ott_core_var = tk.StringVar(value=self.settings["kv_ott_core"])
+        self.kv_cache_directory_var = tk.StringVar(value=self.settings["kv_cache_directory"])
+        self.kv_cache_budget_mib_var = tk.IntVar(value=self.settings["kv_cache_budget_mib"])
+        self.kv_cache_max_mib_var = tk.IntVar(value=self.settings["kv_cache_max_mib"])
         self.bench_prompt_var = tk.IntVar(value=int(self.settings.get("bench_prompt", 512)))
         self.bench_gen_var = tk.IntVar(value=int(self.settings.get("bench_gen", 128)))
         self.bench_reps_var = tk.IntVar(value=int(self.settings.get("bench_reps", 3)))
@@ -105,6 +111,7 @@ class RuntimeDeck(RuntimeDeckView):
         self.server_model = None
         self.server_runtime = None
         self.server_connection = ServerConnection(self)
+        self.kv = KVController(self)
         self.monitor = GpuMonitor(lambda sample: self.msgq.put(("telemetry", sample)))
         self._build_ui()
         self.model_filter_var.trace_add("write", lambda *args: self._render_catalog())
@@ -138,7 +145,7 @@ class RuntimeDeck(RuntimeDeckView):
         return values
 
     def is_busy(self):
-        return self.runner.running or self.lab.running or self.chat.running or self.evaluation.running or self.plan.running
+        return self.runner.running or self.lab.running or self.chat.running or self.evaluation.running or self.plan.running or self.kv.running
 
     def apply_configuration(self, values):
         values = validate_settings(values)
@@ -151,6 +158,8 @@ class RuntimeDeck(RuntimeDeckView):
         self.runtime_tree.selection_set(f"r{self.runtimes.index(runtime)}")
         self.on_model_select()
         self.on_runtime_select()
+        self.model_tree.see(f"m{self.models.index(model)}")
+        self.runtime_tree.see(f"r{self.runtimes.index(runtime)}")
 
     def _render_catalog(self):
         previous = self.selected_model.path if self.selected_model else None
@@ -328,7 +337,7 @@ class RuntimeDeck(RuntimeDeckView):
 
 
     def _run(self, argv, kind, benchmark=None):
-        if self.active_kind is not None or self.runner.running or self.lab.running or (self.plan.running and not self.plan.dispatching):
+        if self.active_kind is not None or self.runner.running or self.lab.running or self.kv.running or (self.plan.running and not self.plan.dispatching):
             messagebox.showwarning(APP_NAME, "A process is already running.")
             return False
         self.save_settings()
@@ -359,6 +368,8 @@ class RuntimeDeck(RuntimeDeckView):
         for button in self.action_buttons:
             button.state(["disabled"])
         try:
+            if kind == "server":
+                self.kv.bind(self.server_model, self.server_runtime, self.server_values)
             self.runner.start(argv, cwd=self.selected_runtime.directory)
             if kind == "server":
                 self.server_connection.refresh(wait_for_start=True)
@@ -368,6 +379,7 @@ class RuntimeDeck(RuntimeDeckView):
             self.active_kind = None
             if kind == "server":
                 self.server_connection.stopped()
+                self.kv.stopped()
             self.benchmark = None
             for button in self.action_buttons:
                 button.state(["!disabled"])
@@ -423,6 +435,7 @@ class RuntimeDeck(RuntimeDeckView):
 
 
     def stop_process(self):
+        self.kv.close()
         self.plan.stop()
         if self.benchmark is not None and not self.benchmark.status:
             self.benchmark.status = "cancelled"
@@ -444,6 +457,9 @@ class RuntimeDeck(RuntimeDeckView):
                 kind, payload = self.msgq.get_nowait()
                 if kind == "server_connection":
                     self.server_connection.event(payload)
+                    continue
+                if kind == "kv_result":
+                    self.kv.event(payload)
                     continue
                 if kind.startswith("evaluation_"):
                     self.evaluation.event(kind, payload)
@@ -500,6 +516,7 @@ class RuntimeDeck(RuntimeDeckView):
                     self.active_kind = None
                     if was_server:
                         self.server_connection.stopped(0 if self._job_stop_reason else code)
+                        self.kv.stopped()
                     for button in self.action_buttons:
                         button.state(["!disabled"])
                 elif kind == "gpu":
@@ -570,6 +587,7 @@ class RuntimeDeck(RuntimeDeckView):
             return
         self._closing = True
         self.server_connection.close()
+        self.kv.close()
         self.plan.stop()
         self.runner.stop()
         self.lab.stop()
@@ -579,7 +597,7 @@ class RuntimeDeck(RuntimeDeckView):
         self._finish_close()
 
     def _finish_close(self):
-        if self.runner.running or self.lab.runner.running or self.plan.running:
+        if self.runner.running or self.lab.runner.running or self.plan.running or self.kv.running:
             self.after(50, self._finish_close)
         else:
             self.destroy()
